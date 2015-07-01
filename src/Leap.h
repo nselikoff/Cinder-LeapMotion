@@ -1,5 +1,5 @@
 /******************************************************************************\
-* Copyright (C) 2012-2014 Leap Motion, Inc. All rights reserved.               *
+* Copyright (C) 2012-2015 Leap Motion, Inc. All rights reserved.               *
 * Leap Motion proprietary and confidential. Not for distribution.              *
 * Use subject to the terms of the Leap Motion SDK Agreement available at       *
 * https://developer.leapmotion.com/sdk_agreement, or another agreement         *
@@ -12,6 +12,7 @@
 #include "LeapMath.h"
 #include <string>
 #include <vector>
+#include <cstring>
 
 // Define integer types for Visual Studio 2008 and earlier
 #if defined(_MSC_VER) && (_MSC_VER < 1600)
@@ -68,12 +69,14 @@ namespace Leap {
 
   // Forward declarations for internal use only
   class PointableImplementation;
+  class BoneImplementation;
   class FingerImplementation;
   class ToolImplementation;
   class HandImplementation;
   class GestureImplementation;
   class ScreenImplementation;
   class DeviceImplementation;
+  class ImageImplementation;
   class InteractionBoxImplementation;
   class FrameImplementation;
   class ControllerImplementation;
@@ -203,9 +206,12 @@ namespace Leap {
     LEAP_EXPORT Frame frame() const;
 
     /**
-     * The Hand associated with this finger or tool.
+     * The Hand associated with a finger.
      *
      * \include Pointable_hand.txt
+     *
+     * Not that in version 2+, tools are not associated with hands. For
+     * tools, this function always returns an invalid Hand object.
      *
      * @returns The associated Hand object, if available; otherwise,
      * an invalid Hand object is returned.
@@ -254,10 +260,6 @@ namespace Leap {
      *
      * \include Pointable_width.txt
      *
-     * The reported width is the average width of the visible portion of the
-     * finger or tool from the hand to the tip. If the width isn't known,
-     * then a value of 0 is returned.
-     *
      * @returns The estimated width of this Pointable object.
      * @since 1.0
      */
@@ -265,9 +267,6 @@ namespace Leap {
 
     /**
      * The estimated length of the finger or tool in millimeters.
-     *
-     * The reported length is the visible length of the finger or tool from the
-     * hand to tip. If the length isn't known, then a value of 0 is returned.
      *
      * \include Pointable_length.txt
      *
@@ -277,8 +276,7 @@ namespace Leap {
     LEAP_EXPORT float length() const;
 
     /**
-     * Whether or not the Pointable is believed to be a finger.
-     * Fingers are generally shorter, thicker, and less straight than tools.
+     * Whether or not this Pointable is classified as a finger.
      *
      * \include Pointable_Conversion.txt
      *
@@ -288,8 +286,7 @@ namespace Leap {
     LEAP_EXPORT bool isFinger() const;
 
     /**
-     * Whether or not the Pointable is believed to be a tool.
-     * Tools are generally longer, thinner, and straighter than fingers.
+     * Whether or not this Pointable is classified as a tool.
      *
      * \include Pointable_Conversion.txt
      *
@@ -297,6 +294,20 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT bool isTool() const;
+
+    /**
+     * Whether or not this Pointable is in an extended posture.
+     *
+     * A finger is considered extended if it is extended straight from the hand as if
+     * pointing. A finger is not extended when it is bent down and curled towards the
+     * palm.  Tools are always extended.
+     *
+     * \include Finger_isExtended.txt
+     *
+     * @returns True, if the pointable is extended.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool isExtended() const;
 
     /**
      * Reports whether this is a valid Pointable object.
@@ -320,9 +331,11 @@ namespace Leap {
      *
      * The possible states are present in the Zone enum of this class:
      *
-     * * Zone.NONE -- The Pointable is outside the hovering zone.
-     * * Zone.HOVERING -- The Pointable is close to, but not touching the touch plane.
-     * * Zone.TOUCHING -- The Pointable has penetrated the touch plane.
+     * **Zone.NONE** -- The Pointable is outside the hovering zone.
+     *
+     * **Zone.HOVERING** -- The Pointable is close to, but not touching the touch plane.
+     *
+     * **Zone.TOUCHING** -- The Pointable has penetrated the touch plane.
      *
      * The touchDistance value provides a normalized indication of the distance to
      * the touch plane when the Pointable is in the hovering or touching zones.
@@ -442,6 +455,411 @@ namespace Leap {
     }
   private:
     LEAP_EXPORT const char* toCString() const;
+
+  };
+
+  /**
+   * The Arm class represents the forearm.
+   *
+   */
+  class Arm : public Interface {
+  public:
+    // For internal use only.
+    Arm(HandImplementation*);
+
+    /**
+    * Constructs an invalid Arm object.
+    *
+    * Get valid Arm objects from a Hand object.
+    *
+    * \include Arm_get.txt
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT Arm();
+
+    /**
+    * The average width of the arm.
+    *
+    * \include Arm_width.txt
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT float width() const;
+
+    /**
+    * The normalized direction in which the arm is pointing (from elbow to wrist).
+    *
+    * \include Arm_direction.txt
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT Vector direction() const;
+
+    /**
+     * The orthonormal basis vectors for the Arm bone as a Matrix.
+     *
+     * Basis vectors specify the orientation of a bone.
+     *
+     * **xBasis** Perpendicular to the longitudinal axis of the
+     *   bone; exits the arm laterally through the sides of the wrist.
+     *
+     * **yBasis or up vector** Perpendicular to the longitudinal
+     *   axis of the bone; exits the top and bottom of the arm. More positive
+     *   in the upward direction.
+     *
+     * **zBasis** Aligned with the longitudinal axis of the arm bone.
+     *   More positive toward the wrist.
+     *
+     * \include Arm_basis.txt
+     *
+     * The bases provided for the right arm use the right-hand rule; those for
+     * the left arm use the left-hand rule. Thus, the positive direction of the
+     * x-basis is to the right for the right arm and to the left for the left
+     * arm. You can change from right-hand to left-hand rule by multiplying the
+     * z basis vector by -1.
+     *
+     * Note that converting the basis vectors directly into a quaternion
+     * representation is not mathematically valid. If you use quaternions,
+     * create them from the derived rotation matrix not directly from the bases.
+     *
+     * @returns The basis of the arm bone as a matrix.
+     * @since 2.0.3
+     */
+    LEAP_EXPORT Matrix basis() const;
+
+    /**
+    * The position of the elbow.
+    *
+    * \include Arm_elbowPosition.txt
+    *
+    * If not in view, the elbow position is estimated based on typical human
+    * anatomical proportions.
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT Vector elbowPosition() const;
+
+    /**
+    * The position of the wrist.
+    *
+    * \include Arm_wristPosition.txt
+    *
+    * Note that the wrist position is not collocated with the end of any bone in
+    * the hand. There is a gap of a few centimeters since the carpal bones are
+    * not included in the skeleton model.
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT Vector wristPosition() const;
+
+    /**
+    * The center of the forearm.
+    *
+    * This location represents the midpoint of the arm between the wrist position
+    * and the elbow position.
+    *
+    * @since 2.1.0
+    */
+    LEAP_EXPORT Vector center() const;
+
+    /**
+    * Reports whether this is a valid Arm object.
+    *
+    * \include Arm_isValid.txt
+    *
+    * @returns True, if this Arm object contains valid tracking data.
+    * @since 2.0.3
+    */
+    LEAP_EXPORT bool isValid() const;
+
+    /**
+     * Returns an invalid Arm object.
+     *
+     * \include Arm_invalid.txt
+     *
+     * @returns The invalid Arm instance.
+     * @since 2.0.3
+     */
+    LEAP_EXPORT static const Arm& invalid();
+
+    /**
+    * Compare Arm object equality.
+    *
+    * \include Arm_operator_equals.txt
+    *
+    * Two Arm objects are equal if and only if both Arm objects represent the
+    * exact same physical arm in the same frame and both Arm objects are valid.
+    * @since 2.0.3
+    */
+    LEAP_EXPORT bool operator==(const Arm&) const;
+
+    /**
+    * Compare Arm object inequality.
+    *
+    * \include Arm_operator_not_equals.txt
+    *
+    * Two Arm objects are equal if and only if both Arm objects represent the
+    * exact same physical arm in the same frame and both Arm objects are valid.
+    * @since 2.0.3
+    */
+    LEAP_EXPORT bool operator!=(const Arm&) const;
+
+    /**
+    * Writes a brief, human readable description of the Arm object to an output stream.
+    *
+    * \include Arm_stream.txt
+    *
+    * @since 2.0.3
+    */
+    LEAP_EXPORT friend std::ostream& operator<<(std::ostream&, const Arm&);
+
+    /**
+    * A string containing a brief, human readable description of the Arm object.
+    *
+    * \include Arm_toString.txt
+    *
+    * @returns A description of the Arm object as a string.
+    * @since 2.0.3
+    */
+    std::string toString() const {
+      const char* cstr = toCString();
+      std::string str(cstr);
+      deleteCString(cstr);
+      return str;
+    }
+  private:
+    LEAP_EXPORT const char* toCString() const;
+
+  };
+
+  /**
+   * The Bone class represents a tracked bone.
+   *
+   * All fingers contain 4 bones that make up the anatomy of the finger.
+   * Get valid Bone objects from a Finger object.
+   *
+   * Bones are ordered from base to tip, indexed from 0 to 3.  Additionally, the
+   * bone's Type enum may be used to index a specific bone anatomically.
+   *
+   * \include Bone_iteration.txt
+   *
+   * The thumb does not have a base metacarpal bone and therefore contains a valid,
+   * zero length bone at that location.
+   *
+   * Note that Bone objects can be invalid, which means that they do not contain
+   * valid tracking data and do not correspond to a physical bone. Invalid Bone
+   * objects can be the result of asking for a Bone object from an invalid finger,
+   * indexing a bone out of range, or constructing a new bone.
+   * Test for validity with the Bone::isValid() function.
+   * @since 2.0
+   */
+  class Bone : public Interface {
+  public:
+    /**
+     * Enumerates the names of the bones.
+     *
+     * Members of this enumeration are returned by Bone::type() to identify a
+     * Bone object.
+     * @since 2.0
+     */
+    enum Type {
+      TYPE_METACARPAL = 0,   /**< Bone connected to the wrist inside the palm */
+      TYPE_PROXIMAL = 1,     /**< Bone connecting to the palm */
+      TYPE_INTERMEDIATE = 2, /**< Bone between the tip and the base*/
+      TYPE_DISTAL = 3,       /**< Bone at the tip of the finger */
+    };
+
+    // For internal use only.
+    Bone(BoneImplementation*);
+
+     /**
+     * Constructs an invalid Bone object.
+     *
+     * \include Bone_invalid.txt
+     *
+     * Get valid Bone objects from a Finger object.
+     *
+     * @since 2.0
+     */
+    LEAP_EXPORT Bone();
+
+    /**
+     * The base of the bone, closest to the wrist.
+     *
+     * In anatomical terms, this is the proximal end of the bone.
+
+     * \include Bone_prevJoint.txt
+     *
+     * @returns The Vector containing the coordinates of the previous joint position.
+     * @since 2.0
+     */
+    LEAP_EXPORT Vector prevJoint() const;
+
+    /**
+     * The end of the bone, closest to the finger tip.
+     *
+     * In anatomical terms, this is the distal end of the bone.
+     *
+     * \include Bone_nextJoint.txt
+     *
+     * @returns The Vector containing the coordinates of the next joint position.
+     * @since 2.0
+     */
+    LEAP_EXPORT Vector nextJoint() const;
+
+    /**
+     * The midpoint of the bone.
+     *
+     * \include Bone_center.txt
+     *
+     * @returns The midpoint in the center of the bone.
+     * @since 2.0
+     */
+    LEAP_EXPORT Vector center() const;
+
+    /**
+     * The normalized direction of the bone from base to tip.
+     *
+     * \include Bone_direction.txt
+     *
+     * @returns The normalized direction of the bone from base to tip.
+     * @since 2.0
+     */
+    LEAP_EXPORT Vector direction() const;
+
+    /**
+     * The estimated length of the bone in millimeters.
+     *
+     * \include Bone_length.txt
+     *
+     * @returns The length of the bone in millimeters.
+     * @since 2.0
+     */
+    LEAP_EXPORT float length() const;
+
+    /**
+     * The average width of the flesh around the bone in millimeters.
+     *
+     * \include Bone_width.txt
+     *
+     * @returns The width of the flesh around the bone in millimeters.
+     * @since 2.0
+     */
+    LEAP_EXPORT float width() const;
+
+    /**
+     * The name of this bone.
+     *
+     * \include Bone_type.txt
+     *
+     * @returns The anatomical type of this bone as a member of the Bone::Type
+     * enumeration.
+     * @since 2.0
+     */
+    LEAP_EXPORT Type type() const;
+
+    /**
+     * The orthonormal basis vectors for this Bone as a Matrix.
+     *
+     * Basis vectors specify the orientation of a bone.
+     *
+     * **xBasis** Perpendicular to the longitudinal axis of the
+     *   bone; exits the sides of the finger.
+     *
+     * **yBasis or up vector** Perpendicular to the longitudinal
+     *   axis of the bone; exits the top and bottom of the finger. More positive
+     *   in the upward direction.
+     *
+     * **zBasis** Aligned with the longitudinal axis of the bone.
+     *   More positive toward the base of the finger.
+     *
+     * The bases provided for the right hand use the right-hand rule; those for
+     * the left hand use the left-hand rule. Thus, the positive direction of the
+     * x-basis is to the right for the right hand and to the left for the left
+     * hand. You can change from right-hand to left-hand rule by multiplying the
+     * z basis vector by -1.
+     *
+     * You can use the basis vectors for such purposes as measuring complex
+     * finger poses and skeletal animation.
+     *
+     * Note that converting the basis vectors directly into a quaternion
+     * representation is not mathematically valid. If you use quaternions,
+     * create them from the derived rotation matrix not directly from the bases.
+     *
+     * \include Bone_basis.txt
+     *
+     * @returns The basis of the bone as a matrix.
+     * @since 2.0
+     */
+    LEAP_EXPORT Matrix basis() const;
+
+    /**
+     * Reports whether this is a valid Bone object.
+     *
+     * \include Bone_isValid.txt
+     *
+     * @returns True, if this Bone object contains valid tracking data.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool isValid() const;
+
+    /**
+     * Returns an invalid Bone object.
+     *
+     * You can use the instance returned by this function in comparisons testing
+     * whether a given Bone instance is valid or invalid. (You can also use the
+     * Bone::isValid() function.)
+     *
+     * \include Bone_invalid.txt
+     *
+     * @returns The invalid Bone instance.
+     * @since 2.0
+     */
+    LEAP_EXPORT static const Bone& invalid();
+
+    /**
+     * Compare Bone object equality.
+     *
+     * Two Bone objects are equal if and only if both Bone objects represent the
+     * exact same physical bone in the same frame and both Bone objects are valid.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool operator==(const Bone&) const;
+
+    /**
+     * Compare Bone object inequality.
+     *
+     * Two Bone objects are equal if and only if both Bone objects represent the
+     * exact same physical bone in the same frame and both Bone objects are valid.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool operator!=(const Bone&) const;
+
+    /**
+     * Writes a brief, human readable description of the Bone object to an output stream.
+     *
+     * @since 2.0
+     */
+    LEAP_EXPORT friend std::ostream& operator<<(std::ostream&, const Bone&);
+
+    /**
+     * A string containing a brief, human readable description of the Bone object.
+     *
+     * \include Bone_toString.txt
+     *
+     * @returns A description of the Bone object as a string.
+     * @since 2.0
+     */
+    std::string toString() const {
+      const char* cstr = toCString();
+      std::string str(cstr);
+      deleteCString(cstr);
+      return str;
+    }
+
+  private:
+    LEAP_EXPORT const char* toCString() const;
   };
 
   /**
@@ -467,6 +885,31 @@ namespace Leap {
    */
   class Finger : public Pointable {
   public:
+    /**
+     * Deprecated as of version 2.0
+     */
+    enum Joint {
+      JOINT_MCP = 0,
+      JOINT_PIP = 1,
+      JOINT_DIP = 2,
+      JOINT_TIP = 3
+    };
+
+    /**
+     * Enumerates the names of the fingers.
+     *
+     * Members of this enumeration are returned by Finger::type() to identify a
+     * Finger object.
+     * @since 2.0
+     */
+    enum Type {
+      TYPE_THUMB  = 0, /**< The thumb */
+      TYPE_INDEX  = 1, /**< The index or fore-finger */
+      TYPE_MIDDLE = 2, /**< The middle finger */
+      TYPE_RING   = 3, /**< The ring finger */
+      TYPE_PINKY  = 4  /**< The pinky or little finger */
+    };
+
     // For internal use only.
     Finger(FingerImplementation*);
 
@@ -490,6 +933,35 @@ namespace Leap {
     LEAP_EXPORT explicit Finger(const Pointable&);
 
     /**
+     * Deprecated as of version 2.0
+     * Use 'bone' method instead.
+     */
+    LEAP_EXPORT Vector jointPosition(Joint jointIx) const;
+
+    /**
+     * The bone at a given bone index on this finger.
+     *
+     * \include Bone_iteration.txt
+     *
+     * @param boneIx An index value from the Bone::Type enumeration identifying the
+     * bone of interest.
+     * @returns The Bone that has the specified bone type.
+     * @since 2.0
+     */
+    LEAP_EXPORT Bone bone(Bone::Type boneIx) const;
+
+    /**
+     * The name of this finger.
+     *
+     * \include Finger_type.txt
+     *
+     * @returns The anatomical type of this finger as a member of the Finger::Type
+     * enumeration.
+     * @since 2.0
+     */
+    LEAP_EXPORT Type type() const;
+
+    /**
      * Returns an invalid Finger object.
      *
      * You can use the instance returned by this function in comparisons testing
@@ -505,6 +977,8 @@ namespace Leap {
 
     /**
      * A string containing a brief, human readable description of the Finger object.
+     *
+     * \include Finger_toString.txt
      *
      * @returns A description of the Finger object as a string.
      * @since 1.0
@@ -524,11 +998,8 @@ namespace Leap {
    * The Tool class represents a tracked tool.
    *
    * Tools are Pointable objects that the Leap Motion software has classified as a tool.
-   * Tools are longer, thinner, and straighter than a typical finger.
-   * Get valid Tool objects from a Frame or a Hand object.
    *
-   * Tools may reference a hand, but unlike fingers they are not permanently associated.
-   * Instead, a tool can be transferred between hands while keeping the same ID.
+   * Get valid Tool objects from a Frame object.
    *
    * \image html images/Leap_Tool.png
    *
@@ -549,7 +1020,7 @@ namespace Leap {
      * Constructs a Tool object.
      *
      * An uninitialized tool is considered invalid.
-     * Get valid Tool objects from a Frame or a Hand object.
+     * Get valid Tool objects from a Frame object.
      *
      * \include Tool_Tool.txt
      *
@@ -603,7 +1074,7 @@ namespace Leap {
    *
    * Hand tracking data includes a palm position and velocity; vectors for
    * the palm normal and direction to the fingers; properties of a sphere fit
-   * to the hand; and lists of the attached fingers and tools.
+   * to the hand; and lists of the attached fingers.
    *
    * Get Hand objects from a Frame object:
    *
@@ -663,15 +1134,11 @@ namespace Leap {
     LEAP_EXPORT Frame frame() const;
 
     /**
-     * The list of Pointable objects (fingers and tools) detected in this frame
+     * The list of Pointable objects detected in this frame
      * that are associated with this hand, given in arbitrary order. The list
-     * can be empty if no fingers or tools associated with this hand are detected.
+     * will always contain 5 fingers.
      *
-     * Use the Pointable::isFinger() function to determine whether or not an
-     * item in the list represents a finger. Use the Pointable::isTool() function
-     * to determine whether or not an item in the list represents a tool.
-     * You can also get only fingers using the Hand::fingers() function or
-     * only tools using the Hand::tools() function.
+     * Use PointableList::extended() to remove non-extended fingers from the list.
      *
      * \include Hand_Get_Fingers.txt
      *
@@ -685,15 +1152,16 @@ namespace Leap {
      *
      * Use the Hand::pointable() function to retrieve a Pointable object
      * associated with this hand using an ID value obtained from a previous frame.
-     * This function always returns a Pointable object, but if no finger or tool
+     * This function always returns a Pointable object, but if no finger
      * with the specified ID is present, an invalid Pointable object is returned.
      *
      * \include Hand_Get_Pointable_ByID.txt
      *
-     * Note that the ID values assigned to objects persist across frames, but only until
-     * tracking of that object is lost. If tracking of a finger or tool is lost and subsequently
-     * regained, the new Pointable object representing that finger or tool may have a
-     * different ID than that representing the finger or tool in an earlier frame.
+     * Note that the ID values assigned to fingers are based on the hand ID.
+     * Hand IDs persist across frames, but only until
+     * tracking of that hand is lost. If tracking of the hand is lost and subsequently
+     * regained, the new Hand object and its child Finger objects will have a
+     * different ID than in an earlier frame.
      *
      * @param id The ID value of a Pointable object from a previous frame.
      * @returns The Pointable object with the matching ID if one exists for this
@@ -704,8 +1172,9 @@ namespace Leap {
 
     /**
      * The list of Finger objects detected in this frame that are attached to
-     * this hand, given in arbitrary order.
-     * The list can be empty if no fingers attached to this hand are detected.
+     * this hand, given in order from thumb to pinky.  The list cannot be empty.
+     *
+     * Use PointableList::extended() to remove non-extended fingers from the list.
      *
      * \include Hand_Get_Fingers.txt
      *
@@ -736,7 +1205,7 @@ namespace Leap {
      */
     LEAP_EXPORT Finger finger(int32_t id) const;
 
-    /**
+    /*
      * The list of Tool objects detected in this frame that are held by this
      * hand, given in arbitrary order.
      * The list can be empty if no tools held by this hand are detected.
@@ -746,9 +1215,15 @@ namespace Leap {
      * @returns The ToolList containing all Tool objects held by this hand.
      * @since 1.0
      */
+     /**
+     * Tools are not associated with hands in version 2+. This list
+     * is always empty.
+     *
+     * @deprecated 2.0
+     */
     LEAP_EXPORT ToolList tools() const;
 
-    /**
+    /*
      * The Tool object with the specified ID held by this hand.
      *
      * Use the Hand::tool() function to retrieve a Tool object held by
@@ -767,6 +1242,12 @@ namespace Leap {
      * @returns The Tool object with the matching ID if one exists for this
      * hand in this frame; otherwise, an invalid Tool object is returned.
      * @since 1.0
+     */
+     /**
+     * Tools are not associated with hands in version 2+. This function
+     * always returns an invalid Tool object.
+     *
+     * @deprecated 2.0
      */
     LEAP_EXPORT Tool tool(int32_t id) const;
 
@@ -826,6 +1307,16 @@ namespace Leap {
     LEAP_EXPORT Vector palmNormal() const;
 
     /**
+     * The estimated width of the palm when the hand is in a flat position.
+     *
+     * \include Hand_palmWidth.txt
+     *
+     * @returns The width of the palm in millimeters
+     * @since 2.0
+     */
+    LEAP_EXPORT float palmWidth() const;
+
+    /**
      * The direction from the palm position toward the fingers.
      *
      * The direction is expressed as a unit vector pointing in the same
@@ -840,6 +1331,48 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT Vector direction() const;
+
+    /**
+     * The orientation of the hand as a basis matrix.
+     *
+     * The basis is defined as follows:
+     *
+     * **xAxis** Positive in the direction of the pinky
+     *
+     * **yAxis** Positive above the hand
+     *
+     * **zAxis** Positive in the direction of the wrist
+     *
+     * Note: Since the left hand is a mirror of the right hand, the
+     * basis matrix will be left-handed for left hands.
+     *
+     * \include Hand_basis.txt
+     *
+     * @returns The basis of the hand as a matrix.
+     * @since 2.0
+     */
+    LEAP_EXPORT Matrix basis() const;
+
+    /**
+     * The arm to which this hand is attached.
+     *
+     * If the arm is not completely in view, Arm attributes are estimated based on
+     * the attributes of entities that are in view combined with typical human anatomy.
+     *
+     * \include Arm_get.txt
+     *
+     * @returns The Arm object for this hand.
+     * @since 2.0.3
+     */
+    LEAP_EXPORT Arm arm() const;
+
+    /**
+     * The position of the wrist of this hand.
+     *
+     * @returns A vector containing the coordinates of the wrist position in millimeters.
+     * @since 2.0.3
+     */
+    LEAP_EXPORT Vector wristPosition() const;
 
     /**
      * The center of a sphere fit to the curvature of this hand.
@@ -867,6 +1400,35 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT float sphereRadius() const;
+
+    /**
+     * The holding strength of a pinch hand pose.
+     *
+     * The strength is zero for an open hand, and blends to 1.0 when a pinching
+     * hand pose is recognized. Pinching can be done between the thumb
+     * and any other finger of the same hand.
+     *
+     * \include Hand_pinchStrength.txt
+     *
+     * @returns A float value in the [0..1] range representing the holding strength
+     * of the pinch pose.
+     * @since 2.0
+     */
+    LEAP_EXPORT float pinchStrength() const;
+
+    /**
+     * The strength of a grab hand pose.
+     *
+     * The strength is zero for an open hand, and blends to 1.0 when a grabbing hand
+     * pose is recognized.
+     *
+     * \include Hand_grabStrength.txt
+     *
+     * @returns A float value in the [0..1] range representing the holding strength
+     * of the pose.
+     * @since 2.0
+     */
+    LEAP_EXPORT float grabStrength() const;
 
     /**
      * The change of position of this hand between the current frame and
@@ -909,7 +1471,7 @@ namespace Leap {
 
     /**
      * The axis of rotation derived from the change in orientation of this
-     * hand, and any associated fingers and tools, between the current frame
+     * hand, and any associated fingers, between the current frame
      * and the specified frame.
      *
      * \include Hand_rotationAxis.txt
@@ -930,7 +1492,7 @@ namespace Leap {
 
     /**
      * The angle of rotation around the rotation axis derived from the change
-     * in orientation of this hand, and any associated fingers and tools,
+     * in orientation of this hand, and any associated fingers,
      * between the current frame and the specified frame.
      *
      * \include Hand_rotationAngle.txt
@@ -953,7 +1515,7 @@ namespace Leap {
 
     /**
      * The angle of rotation around the specified axis derived from the change
-     * in orientation of this hand, and any associated fingers and tools,
+     * in orientation of this hand, and any associated fingers,
      * between the current frame and the specified frame.
      *
      * \include Hand_rotationAngle_axis.txt
@@ -977,7 +1539,7 @@ namespace Leap {
 
     /**
      * The transform matrix expressing the rotation derived from the change
-     * in orientation of this hand, and any associated fingers and tools,
+     * in orientation of this hand, and any associated fingers,
      * between the current frame and the specified frame.
      *
      * \include Hand_rotationMatrix.txt
@@ -1023,7 +1585,7 @@ namespace Leap {
      * \include Hand_scaleFactor.txt
      *
      * The Leap Motion software derives scaling from the relative inward or outward motion of
-     * a hand and its associated fingers and tools (independent of translation
+     * a hand and its associated fingers (independent of translation
      * and rotation).
      *
      * If a corresponding Hand object is not found in sinceFrame, or if either
@@ -1065,6 +1627,37 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT float timeVisible() const;
+
+    /**
+     * How confident we are with a given hand pose.
+     *
+     * The confidence level ranges between 0.0 and 1.0 inclusive.
+     *
+     * \include Hand_confidence.txt
+     *
+     * @since 2.0
+     */
+    LEAP_EXPORT float confidence() const;
+
+    /**
+     * Identifies whether this Hand is a left hand.
+     *
+     * \include Hand_isLeft.txt
+     *
+     * @returns True if the hand is identified as a left hand.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool isLeft() const;
+
+    /**
+     * Identifies whether this Hand is a right hand.
+     *
+     * \include Hand_isRight.txt
+     *
+     * @returns True if the hand is identified as a right hand.
+     * @since 2.0
+     */
+    LEAP_EXPORT bool isRight() const;
 
     /**
      * Reports whether this is a valid Hand object.
@@ -1161,12 +1754,15 @@ namespace Leap {
    * Subclasses of Gesture define the properties for the specific movement patterns
    * recognized by the Leap Motion software.
    *
-   * The Gesture subclasses for include:
+   * The Gesture subclasses include:
    *
-   * * CircleGesture -- A circular movement by a finger.
-   * * SwipeGesture -- A straight line movement by the hand with fingers extended.
-   * * ScreenTapGesture -- A forward tapping movement by a finger.
-   * * KeyTapGesture -- A downward tapping movement by a finger.
+   * **CircleGesture** -- A circular movement by a finger.
+   *
+   * **SwipeGesture** -- A straight line movement by the hand with fingers extended.
+   *
+   * **ScreenTapGesture** -- A forward tapping movement by a finger.
+   *
+   * **KeyTapGesture** -- A downward tapping movement by a finger.
    *
    * Circle and swipe gestures are continuous and these objects can have a
    * state of start, update, and stop.
@@ -1479,20 +2075,18 @@ namespace Leap {
   };
 
   /**
-   * The SwipeGesture class represents a swiping motion of hand and a finger or tool.
+   * The SwipeGesture class represents a swiping motion a finger or tool.
    *
    * \image html images/Leap_Gesture_Swipe.png
    *
-   * SwipeGesture objects are generated for each visible finger or tool on the
-   * swiping hand. Swipe gestures are continuous; a gesture object with the same
+   * SwipeGesture objects are generated for each visible finger or tool.
+   * Swipe gestures are continuous; a gesture object with the same
    * ID value will appear in each frame while the gesture continues.
    *
    * **Important:** To use swipe gestures in your application, you must enable
    * recognition of the swipe gesture. You can enable recognition with:
    *
    * \include Gesture_Swipe_Enable.txt
-   *
-   * Swipe gestures are continuous.
    *
    * You can set the minimum length and velocity required for a movement
    * to be recognized as a swipe using the config attribute of a connected
@@ -1619,10 +2213,12 @@ namespace Leap {
    * Circle gestures are continuous. The CircleGesture objects for the gesture have
    * three possible states:
    *
-   * * State::STATE_START -- The circle gesture has just started. The movement has
+   * **State::STATE_START** -- The circle gesture has just started. The movement has
    *   progressed far enough for the recognizer to classify it as a circle.
-   * * State::STATE_UPDATE -- The circle gesture is continuing.
-   * * State::STATE_STOP -- The circle gesture is finished.
+   *
+   * **State::STATE_UPDATE** -- The circle gesture is continuing.
+   *
+   * **State::STATE_STOP** -- The circle gesture is finished.
    *
    * You can set the minimum radius and minimum arc length required for a movement
    * to be recognized as a circle using the config attribute of a connected
@@ -1750,7 +2346,7 @@ namespace Leap {
    * The ScreenTapGesture class represents a tapping gesture by a finger or tool.
    *
    * A screen tap gesture is recognized when the tip of a finger pokes forward
-   * and then springs back to approximately the original postion, as if
+   * and then springs back to approximately the original position, as if
    * tapping a vertical screen. The tapping finger must pause briefly before beginning the tap.
    *
    * \image html images/Leap_Gesture_Tap2.png
@@ -1843,7 +2439,7 @@ namespace Leap {
     LEAP_EXPORT Vector direction() const;
 
     /**
-     * The progess value is always 1.0 for a screen tap gesture.
+     * The progress value is always 1.0 for a screen tap gesture.
      *
      * @returns float The value 1.0.
      * @since 1.0
@@ -1865,7 +2461,7 @@ namespace Leap {
    * The KeyTapGesture class represents a tapping gesture by a finger or tool.
    *
    * A key tap gesture is recognized when the tip of a finger rotates down toward the
-   * palm and then springs back to approximately the original postion, as if
+   * palm and then springs back to approximately the original position, as if
    * tapping. The tapping finger must pause briefly before beginning the tap.
    *
    * \image html images/Leap_Gesture_Tap.png
@@ -1960,7 +2556,7 @@ namespace Leap {
     LEAP_EXPORT Vector direction() const;
 
     /**
-     * The progess value is always 1.0 for a key tap gesture.
+     * The progress value is always 1.0 for a key tap gesture.
      *
      * @returns float The value 1.0.
      * @since 1.0
@@ -1979,29 +2575,47 @@ namespace Leap {
   };
 
   /*
-   * Deprecated as of version 1.2
-   * @since 1.0
+   * Deprecated as of version 1.2.
    */
   class Screen : public Interface {
   public:
+    // For internal use only.
     Screen(ScreenImplementation*);
+
     LEAP_EXPORT Screen();
+
     LEAP_EXPORT int32_t id() const;
+
     LEAP_EXPORT Vector intersect(const Pointable& pointable, bool normalize, float clampRatio = 1.0f) const;
+
     LEAP_EXPORT Vector intersect(const Vector& position, const Vector& direction, bool normalize, float clampRatio = 1.0f) const;
+
     LEAP_EXPORT Vector project(const Vector& position, bool normalize, float clampRatio = 1.0f) const;
+
     LEAP_EXPORT Vector horizontalAxis() const;
+
     LEAP_EXPORT Vector verticalAxis() const;
+
     LEAP_EXPORT Vector bottomLeftCorner() const;
+
     LEAP_EXPORT Vector normal() const;
+
     LEAP_EXPORT int widthPixels() const;
+
     LEAP_EXPORT int heightPixels() const;
+
     LEAP_EXPORT float distanceToPoint(const Vector& point) const;
+
     LEAP_EXPORT bool isValid() const;
+
     LEAP_EXPORT static const Screen& invalid();
+
     LEAP_EXPORT bool operator==(const Screen&) const;
+
     LEAP_EXPORT bool operator!=(const Screen&) const;
+
     LEAP_EXPORT friend std::ostream& operator<<(std::ostream&, const Screen&);
+
     std::string toString() const {
       const char* cstr = toCString();
       std::string str(cstr);
@@ -2017,7 +2631,12 @@ namespace Leap {
    * The Device class represents a physically connected device.
    *
    * The Device class contains information related to a particular connected
-   * device such as field of view, device id, and calibrated positions.
+   * device such as device id, field of view relative to the device,
+   * and the position and orientation of the device in relative coordinates.
+   *
+   * The position and orientation describe the alignment of the device relative to the user.
+   * The alignment relative to the user is only descriptive. Aligning devices to users
+   * provides consistency in the parameters that describe user interactions.
    *
    * Note that Device objects can be invalid, which means that they do not contain
    * valid device information and do not correspond to a physical device.
@@ -2027,26 +2646,26 @@ namespace Leap {
   class Device : public Interface {
   public:
 
-    /**
-    * The available types of Leap Motion controllers.
-    * @since 1.2
-    */
+  /**
+   * The available types of Leap Motion controllers.
+   * @since 1.2
+   */
     enum Type
     {
-      /**
-       * A standalone USB peripheral. The original Leap Motion controller device.
-       * @since 1.2
-       */
+    /**
+     * A standalone USB peripheral. The original Leap Motion controller device.
+     * @since 1.2
+     */
       TYPE_PERIPHERAL = 1,
-      /**
-       * A controller embedded in a laptop computer.
-       * @since 1.2
-       */
+    /**
+     * A controller embedded in a keyboard.
+     * @since 1.2
+     */
       TYPE_LAPTOP,
-      /**
-       * A controller embedded in a keyboard.
-       * @since 1.2
-       */
+    /**
+     * A controller embedded in a laptop computer.
+     * @since 1.2
+     */
       TYPE_KEYBOARD
     };
 
@@ -2099,7 +2718,7 @@ namespace Leap {
     LEAP_EXPORT float verticalViewAngle() const;
 
     /**
-     * The maximum reliable tracking range.
+     * The maximum reliable tracking range from the center of this device.
      *
      * The range reports the maximum recommended distance from the device center
      * for which tracking is expected to be reliable. This distance is not a hard limit.
@@ -2131,7 +2750,7 @@ namespace Leap {
     LEAP_EXPORT float distanceToBoundary(const Vector& position) const;
 
     /**
-     * Reports whether this device is embedded in a computer or computer
+     * Reports whether this device is embedded in another computer or computer
      * peripheral.
      *
      * @returns True, if this device is embedded in a laptop, keyboard, or other computer
@@ -2148,6 +2767,15 @@ namespace Leap {
      */
     LEAP_EXPORT bool isStreaming() const;
 
+    // primarily for the image API
+    /**
+     * Deprecated. Always reports false.
+     *
+     * @since 2.1
+     * @deprecated 2.1.1
+     */
+    LEAP_EXPORT bool isFlipped() const;
+
     /**
      * The device type.
      *
@@ -2160,6 +2788,54 @@ namespace Leap {
      * @since 1.2
      */
     LEAP_EXPORT Type type() const;
+
+    /**
+     * An alphanumeric serial number unique to each device.
+     *
+     * Consumer device serial numbers consist of 2 letters followed by 11 digits.
+     *
+     * When using multiple devices, the serial number provides an unambiguous
+     * identifier for each device.
+     * @since 2.2.2
+     */
+    std::string serialNumber() const {
+      const char* cstr = serialNumberCString();
+      std::string str(cstr);
+      deleteCString(cstr);
+      return str;
+    }
+
+    /*
+     * This API is experimental and not currently intended for external use.
+     * Position and orientation can only be manually configured via a config file.
+     * This API and the config file may change in the future or be removed entirely.
+     *
+     * The position of the center of the device in global coordinates (currently defined
+     * in the configuration file).
+     * @since 2.2.2
+     */
+    LEAP_EXPORT Vector position() const;
+
+    /*
+     * This API is experimental and not currently intended for external use.
+     * Position and orientation can only be manually configured via a config file.
+     * This API and the config file may change in the future or be removed entirely.
+     *
+     * The orientation of the device is described by a right-handed basis:
+     * xBasis : Unit vector along baseline axis between camera centers
+     * yBasis : Unit vector in the direction of the center of view of both cameras
+     * zBasis : The completion of the right-handed basis (perpendicular to the
+     *          x and y vectors)
+     *
+     * In the case of a peripheral device, the z-basis vector points
+     * out from the green-status-LED side of the device. When multiple-device
+     * tracking is enabled, automatic coordinate system orientation is disabled.
+     *
+     * \image html images/Leap_Axes.png
+     *
+     * @since 2.2.2
+    */
+    LEAP_EXPORT Matrix orientation() const;
 
     /**
      * Reports whether this is a valid Device object.
@@ -2221,6 +2897,381 @@ namespace Leap {
      *
      * @returns A description of the Device as a string.
      * @since 1.0
+     */
+    std::string toString() const {
+      const char* cstr = toCString();
+      std::string str(cstr);
+      deleteCString(cstr);
+      return str;
+    }
+
+  private:
+    LEAP_EXPORT const char* toCString() const;
+    LEAP_EXPORT const char* serialNumberCString() const;
+  };
+
+  /**
+   * The Image class represents a single image from one of the Leap Motion cameras.
+   *
+   * In addition to image data, the Image object provides a distortion map for correcting
+   * lens distortion.
+   *
+   * \include Image_raw.txt
+   *
+   * Note that Image objects can be invalid, which means that they do not contain
+   * valid image data. Get valid Image objects from Frame::frames(). Test for
+   * validity with the Image::isValid() function.
+   * @since 2.1.0
+   */
+  class Image : public Interface {
+  public:
+
+    // For internal use only.
+    Image(ImageImplementation*);
+
+    /**
+     * Constructs a Image object.
+     *
+     * An uninitialized image is considered invalid.
+     * Get valid Image objects from a ImageList object obtained from the
+     * Frame::images() method.
+     *
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT Image();
+
+    /**
+     * The image sequence ID.
+     *
+     * \include Image_sequenceId.txt
+     *
+     * @since 2.2.1
+     */
+    LEAP_EXPORT int64_t sequenceId() const;
+
+    /**
+     * The image ID.
+     *
+     * Images with ID of 0 are from the left camera; those with an ID of 1 are from the
+     * right camera (with the device in its standard operating position with the
+     * green LED facing the operator).
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int32_t id() const;
+
+    /**
+     * The image data.
+     *
+     * The image data is a set of 8-bit intensity values. The buffer is
+     * ``Image::width() * Image::height() * Image::bytesPerPixel()`` bytes long.
+     *
+     * \include Image_data_1.txt
+     *
+     * @return The array of unsigned char containing the sensor brightness values.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT const unsigned char* data() const;
+
+    /**
+     * The distortion calibration map for this image.
+     *
+     * The calibration map is a 64x64 grid of points. Each point is defined by
+     * a pair of 32-bit floating point values. Each point in the map
+     * represents a ray projected into the camera. The value of
+     * a grid point defines the pixel in the image data containing the brightness
+     * value produced by the light entering along the corresponding ray. By
+     * interpolating between grid data points, you can find the brightness value
+     * for any projected ray. Grid values that fall outside the range [0..1] do
+     * not correspond to a value in the image data and those points should be ignored.
+     *
+     * \include Image_distortion_1.txt
+     *
+     * The calibration map can be used to render an undistorted image as well as to
+     * find the true angle from the camera to a feature in the raw image. The
+     * distortion map itself is designed to be used with GLSL shader programs.
+     * In non-realtime contexts, it may be more convenient to use the Image::rectify()
+     * and Image::warp() functions.
+     *
+     * If using shaders is not possible, you can use the distortion map directly.
+     * This can be faster than using the ``warp()`` function, if carefully optimized:
+     *
+     * \include Image_distortion_using.txt
+     *
+     * Distortion is caused by the lens geometry as well as imperfections in the
+     * lens and sensor window. The calibration map is created by the calibration
+     * process run for each device at the factory (and which can be rerun by the
+     * user).
+     *
+     * Note, in a future release, there may be two distortion maps per image;
+     * one containing the horizontal values and the other containing the vertical values.
+     *
+     * @returns The float array containing the camera lens distortion map.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT const float* distortion() const;
+
+    /*
+     * Do not call this version of data(). It is intended only as a helper for C#,
+     * Java, and other languages. Use the primary version of data() which returns a
+     * pointer.
+     *
+     * @since 2.1.0
+     */
+    void data(unsigned char* dst) const {
+      const unsigned char* src = data();
+      memcpy(dst, src, width() * height() * bytesPerPixel() * sizeof(unsigned char));
+    }
+
+    /*
+     * Do not call this version of distortion(). It is intended only as a helper for C#,
+     * Java, and other languages. Use the primary version of distortion() which returns
+     * a pointer.
+     *
+     * @since 2.1.0
+     */
+    void distortion(float* dst) const {
+      const float* src = distortion();
+      memcpy(dst, src, distortionWidth() * distortionHeight() * sizeof(float));
+    }
+
+    /* Do not call dataPointer(). It is intended only as a helper for C#.
+     *
+     * @since 2.3.0
+     */
+    void* dataPointer() const {
+      return (void*) data();
+    }
+
+    /* Do not call distortionPointer(). It is intended only as a helper for C#.
+     *
+     * @since 2.3.0
+     */
+    void* distortionPointer() const {
+      return (void*) distortion();
+    }
+
+    /**
+     * The image width.
+     *
+     * \include Image_image_width_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int width() const;
+
+    /**
+     * The image height.
+     *
+     * \include Image_image_height_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int height() const;
+
+    /**
+     * The number of bytes per pixel.
+     *
+     * Use this value along with ``Image::width()`` and ``Image:::height()``
+     * to calculate the size of the data buffer.
+     *
+     * \include Image_bytesPerPixel.txt
+     *
+     * @since 2.2.0
+     */
+    LEAP_EXPORT int bytesPerPixel() const;
+
+    /**
+     * Enumerates the possible image formats.
+     *
+     * The Image::format() function returns an item from the FormatType enumeration.
+     * @since 2.2.0
+     */
+    enum FormatType {
+      INFRARED = 0
+    };
+
+    /**
+     * The image format.
+     *
+     * \include Image_format.txt
+     *
+     * @since 2.2.0
+     */
+    LEAP_EXPORT FormatType format() const;
+
+    /**
+     * The stride of the distortion map.
+     *
+     * Since each point on the 64x64 element distortion map has two values in the
+     * buffer, the stride is 2 times the size of the grid. (Stride is currently fixed
+     * at 2 * 64 = 128).
+     *
+     * \include Image_distortion_width_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int distortionWidth() const;
+
+    /**
+     * The distortion map height.
+     *
+     * Currently fixed at 64.
+     *
+     * \include Image_distortion_height_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int distortionHeight() const;
+
+    /**
+     * The horizontal ray offset.
+     *
+     * Used to convert between normalized coordinates in the range [0..1] and the
+     * ray slope range [-4..4].
+     *
+     * \include Image_ray_factors_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT float rayOffsetX() const;
+
+    /**
+     * The vertical ray offset.
+     *
+     * Used to convert between normalized coordinates in the range [0..1] and the
+     * ray slope range [-4..4].
+     *
+     * \include Image_ray_factors_2.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT float rayOffsetY() const;
+
+    /**
+     * The horizontal ray scale factor.
+     *
+     * Used to convert between normalized coordinates in the range [0..1] and the
+     * ray slope range [-4..4].
+     *
+     * \include Image_ray_factors_1.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT float rayScaleX() const;
+
+    /**
+     * The vertical ray scale factor.
+     *
+     * Used to convert between normalized coordinates in the range [0..1] and the
+     * ray slope range [-4..4].
+     *
+     * \include Image_ray_factors_2.txt
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT float rayScaleY() const;
+
+    /**
+     * Provides the corrected camera ray intercepting the specified point on the image.
+     *
+     * Given a point on the image, ``rectify()`` corrects for camera distortion
+     * and returns the true direction from the camera to the source of that image point
+     * within the Leap Motion field of view.
+     *
+     * This direction vector has an x and y component [x, y, 0], with the third element
+     * always zero. Note that this vector uses the 2D camera coordinate system
+     * where the x-axis parallels the longer (typically horizontal) dimension and
+     * the y-axis parallels the shorter (vertical) dimension. The camera coordinate
+     * system does not correlate to the 3D Leap Motion coordinate system.
+     *
+     * \include Image_rectify_1.txt
+     *
+     * @param uv A Vector containing the position of a pixel in the image.
+     * @returns A Vector containing the ray direction (the z-component of the vector is always 0).
+     * @since 2.1.0
+     */
+    LEAP_EXPORT Vector rectify(const Vector& uv) const; // returns a vector (x, y, 0). The z-component is ignored
+
+    /**
+     * Provides the point in the image corresponding to a ray projecting
+     * from the camera.
+     *
+     * Given a ray projected from the camera in the specified direction, ``warp()``
+     * corrects for camera distortion and returns the corresponding pixel
+     * coordinates in the image.
+     *
+     * The ray direction is specified in relationship to the camera. The first
+     * vector element corresponds to the "horizontal" view angle; the second
+     * corresponds to the "vertical" view angle.
+     *
+     * \include Image_warp_1.txt
+     *
+     * The ``warp()`` function returns pixel coordinates outside of the image bounds
+     * if you project a ray toward a point for which there is no recorded data.
+     *
+     * ``warp()`` is typically not fast enough for realtime distortion correction.
+     * For better performance, use a shader program exectued on a GPU.
+     *
+     * @param xy A Vector containing the ray direction.
+     * @returns A Vector containing the pixel coordinates [x, y, 0] (with z always zero).
+     * @since 2.1.0
+     */
+    LEAP_EXPORT Vector warp(const Vector& xy) const; // returns vector (u, v, 0). The z-component is ignored
+
+    /**
+     * Reports whether this Image instance contains valid data.
+     *
+     * @returns true, if and only if the image is valid.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT bool isValid() const;
+
+    /**
+     * Returns an invalid Image object.
+     *
+     * You can use the instance returned by this function in comparisons testing
+     * whether a given Image instance is valid or invalid. (You can also use the
+     * Image::isValid() function.)
+     *
+     *
+     * @returns The invalid Image instance.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT static const Image& invalid();
+
+    /**
+     * Compare Image object equality.
+     *
+     * Two Image objects are equal if and only if both Image objects represent the
+     * exact same Image and both Images are valid.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT bool operator==(const Image&) const;
+
+    /**
+     * Compare Image object inequality.
+     *
+     *
+     * Two Image objects are equal if and only if both Image objects represent the
+     * exact same Image and both Images are valid.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT bool operator!=(const Image&) const;
+
+    /**
+     * Writes a brief, human readable description of the Image object.
+     *
+     * @since 2.1.0
+     */
+    LEAP_EXPORT friend std::ostream& operator<<(std::ostream&, const Image&);
+
+    /**
+     * A string containing a brief, human readable description of the Image object.
+     *
+     * @returns A description of the Image as a string.
+     * @since 2.1.0
      */
     std::string toString() const {
       const char* cstr = toCString();
@@ -2310,7 +3361,7 @@ namespace Leap {
     LEAP_EXPORT Pointable operator[](int index) const;
 
     /**
-     * Appends the members of the specifed PointableList to this PointableList.
+     * Appends the members of the specified PointableList to this PointableList.
      * @param other A PointableList object containing Pointable objects
      * to append to the end of this PointableList.
      * @since 1.0
@@ -2318,7 +3369,7 @@ namespace Leap {
     LEAP_EXPORT PointableList& append(const PointableList& other);
 
     /**
-     * Appends the members of the specifed FingerList to this PointableList.
+     * Appends the members of the specified FingerList to this PointableList.
      * @param other A FingerList object containing Finger objects
      * to append to the end of this PointableList.
      * @since 1.0
@@ -2326,7 +3377,7 @@ namespace Leap {
     LEAP_EXPORT PointableList& append(const FingerList& other);
 
     /**
-     * Appends the members of the specifed ToolList to this PointableList.
+     * Appends the members of the specified ToolList to this PointableList.
      * @param other A ToolList object containing Tool objects
      * to append to the end of this PointableList.
      * @since 1.0
@@ -2366,6 +3417,15 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT Pointable frontmost() const;
+
+    /**
+     * Returns a new list containing those members of the current list that are
+     * extended. This includes all tools and any fingers whose isExtended() function is true.
+     *
+     * @returns The list of tools and extended fingers from the current list.
+     * @since 2.0
+     */
+    LEAP_EXPORT PointableList extended() const;
 
     /**
      * A C++ iterator type for PointableList objects.
@@ -2447,7 +3507,7 @@ namespace Leap {
     LEAP_EXPORT Finger operator[](int index) const;
 
     /**
-     * Appends the members of the specifed FingerList to this FingerList.
+     * Appends the members of the specified FingerList to this FingerList.
      * @param other A FingerList object containing Finger objects
      * to append to the end of this FingerList.
      * @since 1.0
@@ -2488,6 +3548,28 @@ namespace Leap {
     LEAP_EXPORT Finger frontmost() const;
 
     /**
+     * Returns a new list containing those fingers in the current list that are
+     * extended.
+     *
+     * \include FingerList_extended.txt
+     *
+     * @returns The list of extended fingers from the current list.
+     * @since 2.0
+     */
+    LEAP_EXPORT FingerList extended() const;
+
+    /**
+     * Returns a list containing fingers from the current list of a given finger type by
+     * modifying the existing list.
+     *
+     * \include FingerList_fingerType.txt
+     *
+    * @returns The list of matching fingers from the current list.
+     * @since 2.0
+     */
+    LEAP_EXPORT FingerList fingerType(Finger::Type type) const;
+
+    /**
      * A C++ iterator type for FingerList objects.
      *
      * \include FingerList_iterator.txt
@@ -2518,7 +3600,7 @@ namespace Leap {
   /**
    * The ToolList class represents a list of Tool objects.
    *
-   * Get a ToolList object by calling Frame::tools() or Hand::tools().
+   * Get a ToolList object by calling Frame::tools().
    *
    * \include ToolList_ToolList.txt
    *
@@ -2567,7 +3649,7 @@ namespace Leap {
     LEAP_EXPORT Tool operator[](int index) const;
 
     /**
-     * Appends the members of the specifed ToolList to this ToolList.
+     * Appends the members of the specified ToolList to this ToolList.
      * @param other A ToolList object containing Tool objects
      * to append to the end of this ToolList.
      * @since 1.0
@@ -2685,7 +3767,7 @@ namespace Leap {
     LEAP_EXPORT Hand operator[](int index) const;
 
     /**
-     * Appends the members of the specifed HandList to this HandList.
+     * Appends the members of the specified HandList to this HandList.
      * @param other A HandList object containing Hand objects
      * to append to the end of this HandList.
      */
@@ -2694,6 +3776,8 @@ namespace Leap {
     /**
      * The member of the list that is farthest to the left within the standard
      * Leap Motion frame of reference (i.e has the smallest X coordinate).
+     *
+     * Note: to determine whether a hand is the left hand, use the Hand::isLeft() function.
      *
      * \include HandList_leftmost.txt
      *
@@ -2705,6 +3789,8 @@ namespace Leap {
     /**
      * The member of the list that is farthest to the right within the standard
      * Leap Motion frame of reference (i.e has the largest X coordinate).
+     *
+     * Note: to determine whether a hand is the right hand, use the Hand::isRight() function.
      *
      * \include HandList_rightmost.txt
      *
@@ -2836,21 +3922,31 @@ namespace Leap {
   };
 
   /*
-   * Deprecated as of 1.2
-   * @since 1.0
+   * Deprecated as of version 1.2.
    */
   class ScreenList : public Interface {
   public:
+    // For internal use only.
     ScreenList(const ListBaseImplementation<Screen>&);
+
     LEAP_EXPORT ScreenList();
+
     LEAP_EXPORT int count() const;
+
     LEAP_EXPORT bool isEmpty() const;
+
     LEAP_EXPORT Screen operator[](int index) const;
+
     typedef ConstListIterator<ScreenList, Screen> const_iterator;
+
     LEAP_EXPORT const_iterator begin() const;
+
     LEAP_EXPORT const_iterator end() const;
+
     LEAP_EXPORT Screen closestScreenHit(const Pointable& pointable) const;
+
     LEAP_EXPORT Screen closestScreenHit(const Vector& position, const Vector& direction) const;
+
     LEAP_EXPORT Screen closestScreen(const Vector& position) const;
   };
 
@@ -2897,7 +3993,7 @@ namespace Leap {
     LEAP_EXPORT Device operator[](int index) const;
 
     /**
-     * Appends the members of the specifed DeviceList to this DeviceList.
+     * Appends the members of the specified DeviceList to this DeviceList.
      * @param other A DeviceList object containing Device objects
      * to append to the end of this DeviceList.
      * @since 1.0
@@ -2919,6 +4015,80 @@ namespace Leap {
     /**
      * The C++ iterator set to the end of this DeviceList.
      * @since 1.0
+     */
+    LEAP_EXPORT const_iterator end() const;
+  };
+
+  /**
+   * The ImageList class represents a list of Image objects.
+   *
+   * Get the ImageList object associated with the a Frame of tracking data
+   * by calling Frame::images(). Get the most recent set of images, which can be
+   * newer than the images used to create the current frame, by calling
+   * Controller::images().
+   *
+   * @since 2.1.0
+   */
+  class ImageList : public Interface {
+  public:
+    // For internal use only.
+    ImageList(const ListBaseImplementation<Image>&);
+
+    /**
+     * Constructs an empty list of images.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT ImageList();
+
+    /**
+     * The number of images in this list.
+     *
+     * @returns The number of images in this list.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT int count() const;
+
+    /**
+     * Reports whether the list is empty.
+     *
+     * \include ImageList_isEmpty.txt
+     *
+     * @returns True, if the list has no members.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT bool isEmpty() const;
+
+    /**
+     * Access a list member by its position in the list.
+     * @param index The zero-based list position index.
+     * @returns The Image object at the specified index.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT Image operator[](int index) const;
+
+    /**
+     * Appends the members of the specified ImageList to this ImageList.
+     * @param other A ImageList object containing Image objects
+     * to append to the end of this ImageList.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT ImageList& append(const ImageList& other);
+
+    /**
+     * A C++ iterator type for this ImageList objects.
+     * @since 2.1.0
+     */
+    typedef ConstListIterator<ImageList, Image> const_iterator;
+
+    /**
+     * The C++ iterator set to the beginning of this ImageList.
+     * @since 2.1.0
+     */
+    LEAP_EXPORT const_iterator begin() const;
+
+    /**
+     * The C++ iterator set to the end of this ImageList.
+     * @since 2.1.0
      */
     LEAP_EXPORT const_iterator end() const;
   };
@@ -3118,6 +4288,10 @@ namespace Leap {
      *
      * \include Frame_Frame.txt
      *
+     * The only time you should use this constructor is before deserializing
+     * serialized frame data. Call ``Frame::deserialize(string)`` to recreate
+     * a saved Frame.
+     *
      * @since 1.0
      */
     LEAP_EXPORT Frame();
@@ -3187,6 +4361,8 @@ namespace Leap {
      * The list of Pointable objects (fingers and tools) detected in this frame,
      * given in arbitrary order. The list can be empty if no fingers or tools are detected.
      *
+     * Use PointableList::extended() to remove non-extended fingers from the list.
+     *
      * \include Frame_pointables.txt
      *
      * @returns The PointableList containing all Pointable objects detected in this frame.
@@ -3219,6 +4395,8 @@ namespace Leap {
     /**
      * The list of Finger objects detected in this frame, given in arbitrary order.
      * The list can be empty if no fingers are detected.
+     *
+     * Use PointableList::extended() to remove non-extended fingers from the list.
      *
      * \include Frame_fingers.txt
      *
@@ -3315,7 +4493,7 @@ namespace Leap {
     LEAP_EXPORT GestureList gestures() const;
 
     /**
-     * Returns a GestureList containing all gestures that have occured since
+     * Returns a GestureList containing all gestures that have occurred since
      * the specified frame.
      *
      * \include Frame_gestures_since.txt
@@ -3323,11 +4501,19 @@ namespace Leap {
      * @param sinceFrame An earlier Frame object. The starting frame must
      * still be in the frame history cache, which has a default length of
      * 60 frames.
-     * @return GestureList The list of the Gesture objects that have occured
+     * @return GestureList The list of the Gesture objects that have occurred
      * since the specified frame.
      * @since 1.0
      */
     LEAP_EXPORT GestureList gestures(const Frame& sinceFrame) const;
+
+    /**
+     * The list of images from the Leap Motion cameras.
+     *
+     * @return An ImageList object containing the camera images analyzed to create this Frame.
+     * @since 2.1
+     */
+    LEAP_EXPORT ImageList images() const;
 
     /**
      * The change of position derived from the overall linear motion between
@@ -3612,6 +4798,82 @@ namespace Leap {
     LEAP_EXPORT friend std::ostream& operator<<(std::ostream&, const Frame&);
 
     /**
+     * Encodes this Frame object as a byte string.
+     *
+     * \include Frame_serialize.txt
+     *
+     * @returns The serialized string encoding the data for this frame.
+     * @since 2.1.0
+     */
+    std::string serialize() const {
+      size_t length = 0;
+      const char* cstr = serializeCString(length);
+      std::string str(cstr, length);
+      deleteCString(cstr);
+      return str;
+    }
+
+    /**
+     * Decodes a byte string to replace the properties of this Frame.
+     *
+     * A Controller object must be instantiated for this function to succeed, but
+     * it does not need to be connected. To extract gestures from the deserialized
+     * frame, you must enable the appropriate gestures first.
+     *
+     * Any existing data in the frame is
+     * destroyed. If you have references to
+     * child objects (hands, fingers, etc.), these are preserved as long as the
+     * references remain in scope.
+     *
+     * \include Frame_deserialize.txt
+     *
+     * **Note:** The behavior when calling functions which take
+     * another Frame object as a parameter is undefined when either frame has
+     * been deserialized. For example, calling ``gestures(sinceFrame)`` on a
+     * deserialized frame or with a deserialized frame as parameter (or both)
+     * does not necessarily return all gestures that occured between the two
+     * frames. Motion functions, like ``scaleFactor(startFrame)``, are more
+     * likely to return reasonable results, but could return anomalous values
+     * in some cases.
+     *
+     * @param str A std:string object containing the serialized bytes of a frame.
+     *
+     * @since 2.1.0
+     */
+    void deserialize(const std::string& str) {
+      deserializeCString(str.data(), str.length());
+    }
+
+    /*
+     * Do not call this version of serialize(). It is intended only as
+     * a helper for C#, Java, and other language bindings.
+     */
+    void serialize(unsigned char* ptr) const {
+      size_t length;
+      const unsigned char* cstr = reinterpret_cast<const unsigned char*>(serializeCString(length));
+      memcpy(ptr, cstr, length * sizeof(unsigned char));
+    }
+
+    /*
+     * Do not call serializeLength(). It is intended only as a helper for
+     * C#, Java, and other language bindings. To get the length of the
+     * serialized byte array, use serialize().length()
+     */
+    int serializeLength() const {
+      size_t length = 0;
+      serializeCString(length);
+      return static_cast<int>(length);
+    }
+
+    /*
+     * Do not call this version of deserialize(). It is intended only as
+     * a helper for C#, Java, and other language bindings.
+     */
+    void deserialize(const unsigned char* ptr, int length) {
+      deserializeCString(reinterpret_cast<const char*>(ptr), static_cast<size_t>(length));
+    }
+
+    /**
      * A string containing a brief, human readable description of the Frame object.
      *
      * @returns A description of the Frame as a string.
@@ -3626,6 +4888,8 @@ namespace Leap {
 
   private:
     LEAP_EXPORT const char* toCString() const;
+    LEAP_EXPORT const char* serializeCString(size_t& length) const;
+    LEAP_EXPORT void deserializeCString(const char* str, size_t length);
   };
 
   /**
@@ -3657,7 +4921,7 @@ namespace Leap {
    * the Leap Motion service/daemon. In other words, after the Controller
    * has dispatched the serviceConnected or connected events or
    * Controller::isConnected is true. The configuration value changes are
-   * not persistent; your application needs to set the values everytime it runs.
+   * not persistent; your application needs to set the values every time it runs.
    *
    * @see CircleGesture
    * @see KeyTapGesture
@@ -3830,8 +5094,11 @@ namespace Leap {
      *
      * Call ``save()`` after making a set of configuration changes. The
      * ``save()`` function transfers the configuration changes to the Leap Motion
-     * service. The configuration value changes are not persistent; your
-     * application must set the values everytime it runs.
+     * service. You can save after the Controller has connected to
+     * the Leap Motion service/daemon. In other words, after the Controller
+     * has dispatched the serviceConnected or connected events or
+     * Controller::isConnected is true. The configuration value changes are not persistent; your
+     * application must set the values every time it runs.
      *
      * \include Config_save.txt
      *
@@ -3894,7 +5161,7 @@ namespace Leap {
    * its own thread, not on an application thread.
    * @since 1.0
    */
-  class Controller : public Interface {
+  class LEAP_EXPORT_CLASS Controller : public Interface {
   public:
     // For internal use only.
     Controller(ControllerImplementation*);
@@ -3971,9 +5238,38 @@ namespace Leap {
     /**
      * The supported controller policies.
      *
-     * Currently, the only supported policy is the background frames policy,
-     * which determines whether your application receives frames of tracking
-     * data when it is not the focused, foreground application.
+     * The supported policy flags are:
+     *
+     * **POLICY_BACKGROUND_FRAMES** -- requests that your application receives frames
+     *   when it is not the foreground application for user input.
+     *
+     *   The background frames policy determines whether an application
+     *   receives frames of tracking data while in the background. By
+     *   default, the Leap Motion  software only sends tracking data to the foreground application.
+     *   Only applications that need this ability should request the background
+     *   frames policy. The "Allow Background Apps" checkbox must be enabled in the
+     *   Leap Motion Control Panel or this policy will be denied.
+     *
+     * **POLICY_IMAGES** -- request that your application receives images from the
+     *   device cameras. The "Allow Images" checkbox must be enabled in the
+     *   Leap Motion Control Panel or this policy will be denied.
+     *
+     *   The images policy determines whether an application recieves image data from
+     *   the Leap Motion sensors which each frame of data. By default, this data is
+     *   not sent. Only applications that use the image data should request this policy.
+     *
+     *
+     * **POLICY_OPTIMIZE_HMD** -- request that the tracking be optimized for head-mounted
+     *   tracking.
+     *
+     *   The optimize HMD policy improves tracking in situations where the Leap
+     *   Motion hardware is attached to a head-mounted display. This policy is
+     *   not granted for devices that cannot be mounted to an HMD, such as
+     *   Leap Motion controllers embedded in a laptop or keyboard.
+     *
+     * Some policies can be denied if the user has disabled the feature on
+     * their Leap Motion control panel.
+     *
      * @since 1.0
      */
     enum PolicyFlag {
@@ -3987,6 +5283,19 @@ namespace Leap {
        * @since 1.0
        */
       POLICY_BACKGROUND_FRAMES = (1 << 0),
+
+      /**
+       * Receive raw images from sensor cameras.
+       * @since 2.1.0
+       */
+      POLICY_IMAGES = (1 << 1),
+
+      /**
+       * Optimize the tracking for head-mounted device.
+       * @since 2.1.2
+       */
+      POLICY_OPTIMIZE_HMD = (1 << 2),
+
 #ifdef SWIGCSHARP
       // deprecated
       POLICYDEFAULT = POLICY_DEFAULT,
@@ -3995,9 +5304,54 @@ namespace Leap {
     };
 
     /**
-     * Gets the active policy settings.
+     * This function has been deprecated. Use isPolicySet() instead.
+     * @deprecated 2.1.6
+     */
+    LEAP_EXPORT PolicyFlag policyFlags() const;
+
+    /**
+     * This function has been deprecated. Use setPolicy() and clearPolicy() instead.
+     * @deprecated 2.1.6
+     */
+    LEAP_EXPORT void setPolicyFlags(PolicyFlag flags) const;
+
+    /**
+     * Requests setting a policy.
      *
-     * Use this function to determine the current policy state.
+     * A request to change a policy is subject to user approval and a policy
+     * can be changed by the user at any time (using the Leap Motion settings dialog).
+     * The desired policy flags must be set every time an application runs.
+     *
+     * Policy changes are completed asynchronously and, because they are subject
+     * to user approval or system compatibility checks, may not complete successfully. Call
+     * Controller::isPolicySet() after a suitable interval to test whether
+     * the change was accepted.
+     *
+     * \include Controller_setPolicy.txt
+     *
+     * @param policy A PolicyFlag value indicating the policy to request.
+     * @since 2.1.6
+     */
+    LEAP_EXPORT void setPolicy(PolicyFlag policy) const;
+
+    /**
+     * Requests clearing a policy.
+     *
+     * Policy changes are completed asynchronously and, because they are subject
+     * to user approval or system compatibility checks, may not complete successfully. Call
+     * Controller::isPolicySet() after a suitable interval to test whether
+     * the change was accepted.
+     *
+     * \include Controller_clearPolicy.txt
+     *
+     * @param flags A PolicyFlag value indicating the policy to request.
+     * @since 2.1.6
+     */
+    LEAP_EXPORT void clearPolicy(PolicyFlag policy) const;
+
+    /**
+     * Gets the active setting for a specific policy.
+     *
      * Keep in mind that setting a policy flag is asynchronous, so changes are
      * not effective immediately after calling setPolicyFlag(). In addition, a
      * policy request can be declined by the user. You should always set the
@@ -4005,48 +5359,15 @@ namespace Leap {
      * policy change request was successful after an appropriate interval.
      *
      * If the controller object is not connected to the Leap Motion software, then the default
-     * policy state is returned.
+     * state for the selected policy is returned.
      *
-     * \include Controller_policyFlags.txt
+     * \include Controller_isPolicySet.txt
      *
-     * @returns The current policy flags.
-     * @since 1.0
+     * @param flags A PolicyFlag value indicating the policy to query.
+     * @returns A boolean indicating whether the specified policy has been set.
+     * @since 2.1.6
      */
-    LEAP_EXPORT PolicyFlag policyFlags() const;
-
-    /**
-     * Requests a change in policy.
-     *
-     * A request to change a policy is subject to user approval and a policy
-     * can be changed by the user at any time (using the Leap Motion settings dialog).
-     * The desired policy flags must be set every time an application runs.
-     *
-     * Policy changes are completed asynchronously and, because they are subject
-     * to user approval, may not complete successfully. Call
-     * Controller::policyFlags() after a suitable interval to test whether
-     * the change was accepted.
-     *
-     * Currently, the background frames policy is the only policy supported.
-     * The background frames policy determines whether an application
-     * receives frames of tracking data while in the background. By
-     * default, the Leap Motion  software only sends tracking data to the foreground application.
-     * Only applications that need this ability should request the background
-     * frames policy.
-     *
-     * At this time, you can use the Leap Motion Settings dialog to
-     * globally enable or disable the background frames policy. However,
-     * each application that needs tracking data while in the background
-     * must also set the policy flag using this function.
-     *
-     * This function can be called before the Controller object is connected,
-     * but the request will be sent to the Leap Motion software after the Controller connects.
-     *
-     * \include Controller_setPolicyFlags.txt
-     *
-     * @param flags A PolicyFlag value indicating the policies to request.
-     * @since 1.0
-     */
-    LEAP_EXPORT void setPolicyFlags(PolicyFlag flags) const;
+    LEAP_EXPORT bool isPolicySet(PolicyFlag policy) const;
 
     /**
      * Adds a listener to this Controller.
@@ -4058,6 +5379,10 @@ namespace Leap {
      * Controller::removeListener() function.
      *
      * \include Controller_addListener.txt
+     *
+     * The Controller does not keep a strong reference to the Listener instance.
+     * Ensure that you maintain a reference until the listener is removed from
+     * the controller.
      *
      * @param listener A subclass of Leap::Listener implementing the callback
      * functions for the Leap Motion events you want to handle in your application.
@@ -4105,6 +5430,20 @@ namespace Leap {
     LEAP_EXPORT Frame frame(int history = 0) const;
 
     /**
+     * The most recent set of images from the Leap Motion cameras.
+     *
+     * \include Controller_images.txt
+     *
+     * Depending on timing and the current processing frame rate, the images
+     * obtained with this function can be newer than images obtained from
+     * the current frame of tracking data.
+     *
+     * @return An ImageList object containing the most recent camera images.
+     * @since 2.2.1
+     */
+    LEAP_EXPORT ImageList images() const;
+
+    /**
      * Returns a Config object, which you can use to query the Leap Motion system for
      * configuration information.
      *
@@ -4133,8 +5472,7 @@ namespace Leap {
     LEAP_EXPORT DeviceList devices() const;
 
     /*
-     * Deprecated as of 1.2
-     * @since 1.0
+     * Deprecated as of version 1.2.
      */
     LEAP_EXPORT ScreenList locatedScreens() const;
 
@@ -4170,6 +5508,7 @@ namespace Leap {
      * @since 1.0
      */
     LEAP_EXPORT bool isGestureEnabled(Gesture::Type type) const;
+
   };
 
   /**
@@ -4185,7 +5524,7 @@ namespace Leap {
    * by the Leap Motion library, not the thread used to create or set the Listener instance.
    * @since 1.0
    */
-  class Listener {
+  class LEAP_EXPORT_CLASS Listener {
   public:
     /**
      * Constructs a Listener object.
@@ -4300,8 +5639,14 @@ namespace Leap {
      */
     LEAP_EXPORT virtual void onFocusLost(const Controller&) {}
 
+    // onServiceConnect/onServiceDisconnect are for connection established/lost.
+    // in normal course of events onServiceConnect will get called once after onInit
+    // and onServiceDisconnect will not get called. disconnect notification only happens
+    // if service stops running or something else bad happens to disconnect controller from service.
     /**
      * Called when the Leap Motion daemon/service connects to your application Controller.
+     *
+     * \include Listener_onServiceConnect.txt
      *
      * @param controller The Controller object invoking this callback function.
      * @since 1.2
@@ -4313,9 +5658,11 @@ namespace Leap {
      * Normally, this callback is not invoked. It is only called if some external event
      * or problem shuts down the service or otherwise interrupts the connection.
      *
+     * \include Listener_onServiceDisconnect.txt
+     *
      * @param controller The Controller object invoking this callback function.
      * @since 1.2
-    */
+     */
     LEAP_EXPORT virtual void onServiceDisconnect(const Controller&) {}
 
     /**
@@ -4325,10 +5672,24 @@ namespace Leap {
      * Note that there is currently no way to query whether a device is in robust mode.
      * You can use Frame::currentFramerate() to get the framerate.
      *
+     * \include Listener_onDeviceChange.txt
+     *
      * @param controller The Controller object invoking this callback function.
      * @since 1.2
      */
     LEAP_EXPORT virtual void onDeviceChange(const Controller&) {}
+
+    /**
+     * Called when new images are available.
+     * Access the new frame data using the Controller::images() function.
+     *
+     * \include Listener_onImages.txt
+     *
+     * @param controller The Controller object invoking this callback function.
+     * @since 2.2.1
+     */
+    LEAP_EXPORT virtual void onImages(const Controller&) {}
+
   };
 }
 

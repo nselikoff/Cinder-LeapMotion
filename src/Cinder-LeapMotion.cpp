@@ -1,6 +1,6 @@
 /*
 * 
-* Copyright (c) 2013, Ban the Rewind
+* Copyright (c) 2015, Ban the Rewind
 * All rights reserved.
 * 
 * Redistribution and use in source and binary forms, with or 
@@ -44,55 +44,69 @@ using namespace std;
 
 namespace LeapMotion {
 
-Matrix33f toMatrix33f( const Leap::Matrix& m )
+Channel8u toChannel8u( const Leap::Image& img, bool copyData )
 {
-	Matrix33f mtx;
+	int32_t h = img.height();
+	int32_t w = img.width();
+	Channel8u channel;
+	if ( copyData ) {
+		channel = Channel8u( w, h );
+		char_traits<uint8_t>::copy( channel.getData(), img.data(), w * h * sizeof( uint8_t ) );
+	} else {
+		channel = Channel8u( w, h, w * sizeof( uint8_t ), sizeof( uint8_t ), (uint8_t*)img.data() );
+	}
+	return channel;
+}
+
+mat3 toMat3( const Leap::Matrix& m )
+{
+	mat3 mat;
 	Leap::FloatArray a = m.toArray3x3();
-	for ( size_t i = 0; i < 3; ++i ) {
-		size_t j = i * 3;
-		Vec3f row( a[ j + 0 ], a[ j + 1 ], a[ j + 2 ] );
-		mtx.setRow( i, row );
+	for ( size_t x = 0; x < 3; ++x ) {
+		for ( size_t y = 0; y < 3; ++y ) {
+			mat[ x ][ y ] = a[ y * 3 + x ];
+		}
 	}
-	return mtx;
+	return mat;
 }
 
-Leap::Matrix toLeapMatrix( const Matrix33f& m )
+Leap::Matrix toLeapMatrix( const mat3& m )
 {
 	Leap::Matrix matrix;
-	matrix.xBasis = Leap::Vector( m.m00, m.m01, m.m02 );
-	matrix.yBasis = Leap::Vector( m.m10, m.m11, m.m12 );
-	matrix.zBasis = Leap::Vector( m.m20, m.m21, m.m22 );
+	matrix.xBasis = Leap::Vector( m[ 0 ][ 0 ], m[ 0 ][ 1 ], m[ 0 ][ 2 ] );
+	matrix.yBasis = Leap::Vector( m[ 1 ][ 0 ], m[ 1 ][ 1 ], m[ 1 ][ 2 ] );
+	matrix.zBasis = Leap::Vector( m[ 2 ][ 0 ], m[ 2 ][ 1 ], m[ 2 ][ 2 ] );
 	return matrix;
 }
 	
-Matrix44f toMatrix44f( const Leap::Matrix& m )
+mat4 toMat4( const Leap::Matrix& m )
 {
-	Matrix44f mtx;
+	mat4 mat;
 	Leap::FloatArray a = m.toArray4x4();
-	for ( size_t i = 0; i < 4; ++i ) {
-		size_t j = i * 4;
-		Vec4f row( a[ j + 0 ], a[ j + 1 ], a[ j + 2 ], a[ j + 3 ] );
-		mtx.setRow( i, row );
+	for ( size_t x = 0; x < 4; ++x ) {
+		for ( size_t y = 0; y < 4; ++y ) {
+			mat[ x ][ y ] = a[ y * 4 + x ];
+		}
 	}
-	return mtx;
+	return mat;
 }
 	
-Leap::Matrix toLeapMatrix( const Matrix44f m )
+Leap::Matrix toLeapMatrix( const mat4 m )
 {
 	Leap::Matrix matrix;
-	matrix.xBasis = Leap::Vector( m.m00, m.m01, m.m02 );
-	matrix.yBasis = Leap::Vector( m.m10, m.m11, m.m12 );
-	matrix.zBasis = Leap::Vector( m.m20, m.m21, m.m22 );
-	matrix.origin = Leap::Vector( m.m30, m.m31, m.m32 );
+	matrix.xBasis = Leap::Vector( m[ 0 ][ 0 ], m[ 0 ][ 1 ], m[ 0 ][ 2 ] );
+	matrix.yBasis = Leap::Vector( m[ 1 ][ 0 ], m[ 1 ][ 1 ], m[ 1 ][ 2 ] );
+	matrix.zBasis = Leap::Vector( m[ 2 ][ 0 ], m[ 2 ][ 1 ], m[ 2 ][ 2 ] );
+	matrix.origin = Leap::Vector( m[ 3 ][ 0 ], m[ 3 ][ 1 ], m[ 3 ][ 2 ] );
 	return matrix;
 }
 
-Vec3f toVec3f( const Leap::Vector& v )
+vec3 toVec3( const Leap::Vector& v )
 {
-	return Vec3f( v.x, v.y, v.z );
+	return vec3( v.x, v.y, v.z );
 }
 	
-Leap::Vector toLeapVector( const Vec3f& v )
+Leap::Vector toLeapVector( const vec3& v )
 {
 	return Leap::Vector( v.x, v.y, v.z );
 }
@@ -101,11 +115,11 @@ Leap::Vector toLeapVector( const Vec3f& v )
 
 Listener::Listener()
 {
-	mConnected			= false;
-	mExited				= false;
-	mFocused			= false;
-	mInitialized		= false;
-	mNewFrame			= false;
+	mConnected		= false;
+	mExited			= false;
+	mFocused		= false;
+	mInitialized	= false;
+	mNewFrame		= false;
 }
 
 void Listener::onConnect( const Leap::Controller& controller ) 
@@ -170,6 +184,7 @@ Device::Device()
 
 Device::~Device()
 {
+	mController->removeListener( mListener );
 }
 
 Leap::Controller* Device::getController() const

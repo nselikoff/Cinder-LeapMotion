@@ -1,6 +1,6 @@
 /*
 * 
-* Copyright (c) 2013, Ban the Rewind
+* Copyright (c) 2015, Ban the Rewind
 * All rights reserved.
 * 
 * Redistribution and use in source and binary forms, with or 
@@ -34,60 +34,50 @@
 * 
 */
 
-#include "cinder/app/AppBasic.h"
+#include "cinder/app/App.h"
 #include "cinder/Camera.h"
 #include "cinder/gl/gl.h"
 #include "cinder/params/Params.h"
 #include "Cinder-LeapMotion.h"
 
-class LeapApp : public ci::app::AppBasic
+class LeapApp : public ci::app::App
 {
 public:
-	void					draw();
-	void					prepareSettings( ci::app::AppBasic::Settings* settings );
-	void					setup();
-	void					update();
+	void						draw() override;
+	void						setup() override;
+	void						update() override;
 private:
-	// Leap
 	LeapMotion::DeviceRef		mDevice;
-	Leap::Frame				mFrame;
-	void 					onFrame( Leap::Frame frame );
+	Leap::Frame					mFrame;
+	void 						onFrame( Leap::Frame frame );
 
-	// Camera
-	ci::CameraPersp			mCamera;
+	ci::CameraPersp				mCamera;
 
-	// Params
-	float					mFrameRate;
-	bool					mFullScreen;
-	ci::params::InterfaceGl	mParams;
-
-	// Save screen shot
-	void					screenShot();
+	float						mFrameRate;
+	bool						mFullScreen;
+	ci::params::InterfaceGlRef	mParams;
+	void						screenShot();
 };
 
+#include "cinder/app/RendererGl.h"
 #include "cinder/ImageIo.h"
 #include "cinder/Utilities.h"
 
-// Imports
 using namespace ci;
 using namespace ci::app;
 using namespace LeapMotion;
 using namespace std;
 
-// Render
 void LeapApp::draw()
 {
-	// Clear window
-	gl::setViewport( getWindowBounds() );
+	gl::viewport( getWindowSize() );
 	gl::clear( Colorf::white() );
 	gl::setMatrices( mCamera );
 
-	// Enable depth
 	gl::enableAlphaBlending();
 	gl::enableDepthRead();
 	gl::enableDepthWrite();
 	
-	// Iterate through hands
 	float headLength = 6.0f;
 	float headRadius = 3.0f;
 	const Leap::HandList& hands = mFrame.hands();
@@ -95,11 +85,11 @@ void LeapApp::draw()
 		const Leap::Hand& hand = *handIter;
 
 		// Get hand data
-		Vec3f handDir		= LeapMotion::toVec3f( hand.direction() );
-		Vec3f palmNorm		= LeapMotion::toVec3f( hand.palmNormal() );
-		Vec3f palmPos		= LeapMotion::toVec3f( hand.palmPosition() );
-		Vec3f palmVel		= LeapMotion::toVec3f( hand.palmVelocity() );
-		Vec3f sphereCenter	= LeapMotion::toVec3f( hand.sphereCenter() );
+		vec3 handDir		= LeapMotion::toVec3( hand.direction() );
+		vec3 palmNorm		= LeapMotion::toVec3( hand.palmNormal() );
+		vec3 palmPos		= LeapMotion::toVec3( hand.palmPosition() );
+		vec3 palmVel		= LeapMotion::toVec3( hand.palmVelocity() );
+		vec3 sphereCenter	= LeapMotion::toVec3( hand.sphereCenter() );
 		float sphereRadius	= hand.sphereRadius();
 		
 		// Hand sphere
@@ -111,11 +101,10 @@ void LeapApp::draw()
 		// Hand plane
 		gl::color( ColorAf( 0.75f, 0.0f, 0.75f, 0.25f ) );
 		gl::pushMatrices();
-		
 		gl::translate( palmPos );
-		gl::rotate( Quatf( palmPos, handDir ) );
+		gl::rotate( quat( palmPos, handDir ) );
 		for ( float i = 0.25f; i <= 1.0f; i += 0.25f ) {
-			gl::drawStrokedCircle( Vec2f::zero(), sphereRadius * i, 16 );
+			gl::drawStrokedCircle( vec2( 0.0f ), sphereRadius * i, 16 );
 		}
 		gl::popMatrices();
 
@@ -137,13 +126,13 @@ void LeapApp::draw()
 			const Leap::Pointable& pointable = *pointIter;
 
 			// Get pointable data
-			Vec3f dir		= LeapMotion::toVec3f( pointable.direction() );
+			vec3 dir		= LeapMotion::toVec3( pointable.direction() );
 			bool isTool		= pointable.isTool();
 			float length	= pointable.length();
-			Vec3f tipPos	= LeapMotion::toVec3f( pointable.tipPosition() );
-			Vec3f tipVel	= LeapMotion::toVec3f( pointable.tipVelocity() );
+			vec3 tipPos		= LeapMotion::toVec3( pointable.tipPosition() );
+			vec3 tipVel		= LeapMotion::toVec3( pointable.tipVelocity() );
 			float width		= pointable.width();
-			Vec3f basePos	= tipPos + dir * -length;
+			vec3 basePos	= tipPos + dir * -length;
 			
 			// Draw line representing pointable's length
 			gl::color( ColorAf::gray( 0.3f ) );
@@ -154,7 +143,7 @@ void LeapApp::draw()
 			gl::color( color );
 			gl::pushMatrices();
 			gl::translate( tipPos );
-			gl::drawStrokedCircle( Vec2f::zero(), width, 16 );
+			gl::drawStrokedCircle( vec2( 0.0f ), width, 16 );
 			gl::popMatrices();
 
 			// Finger velocity
@@ -163,24 +152,14 @@ void LeapApp::draw()
 		}
 	}
 	
-	// Draw the interface
-	mParams.draw();
+	mParams->draw();
 }
 
-// Called when Leap frame data is ready
 void LeapApp::onFrame( Leap::Frame frame )
 {
 	mFrame = frame;
 }
 
-// Prepare window
-void LeapApp::prepareSettings( Settings *settings )
-{
-	settings->setWindowSize( 1024, 768 );
-	settings->setFrameRate( 60.0f );
-}
-
-// Take screen shot
 void LeapApp::screenShot()
 {
 #if defined( CINDER_MSW )
@@ -191,44 +170,39 @@ void LeapApp::screenShot()
 	writeImage( path / fs::path( "frame" + toString( getElapsedFrames() ) + ".png" ), copyWindowSurface() );
 }
 
-// Set up
 void LeapApp::setup()
 {
-	// Set up OpenGL
 	gl::enable( GL_LINE_SMOOTH );
 	glHint( GL_LINE_SMOOTH_HINT, GL_NICEST ); 
 	gl::enable( GL_POLYGON_SMOOTH );
 	glHint( GL_POLYGON_SMOOTH_HINT, GL_NICEST );
 
-	// Set up camera
-	mCamera = CameraPersp( getWindowWidth(), getWindowHeight(), 60.0f, 0.01f, 1000.0f );
-	mCamera.lookAt( Vec3f( 0.0f, 125.0f, 500.0f ), Vec3f( 0.0f, 250.0f, 0.0f ) );
+	mCamera = CameraPersp( getWindowWidth(), getWindowHeight(), 60.0f, 1.0f, 1000.0f );
+	mCamera.lookAt( vec3( 0.0f, 250.0f, 500.0f ), vec3( 0.0f, 250.0f, 0.0f ) );
 	
-	// Start device
-	mDevice 	= Device::create();
+	mDevice = Device::create();
 	mDevice->connectEventHandler( &LeapApp::onFrame, this );
 
-	// Params
 	mFrameRate	= 0.0f;
 	mFullScreen	= false;
-	mParams = params::InterfaceGl( "Params", Vec2i( 200, 105 ) );
-	mParams.addParam( "Frame rate",		&mFrameRate,						"", true );
-	mParams.addParam( "Full screen",	&mFullScreen,						"key=f"		);
-	mParams.addButton( "Screen shot",	bind( &LeapApp::screenShot, this ), "key=space" );
-	mParams.addButton( "Quit",			bind( &LeapApp::quit, this ),		"key=q" );
+	mParams = params::InterfaceGl::create( "Params", ivec2( 200, 105 ) );
+	mParams->addParam( "Frame rate",	&mFrameRate,						"", true );
+	mParams->addParam( "Full screen",	&mFullScreen ).key( "f" );
+	mParams->addButton( "Screen shot",	bind( &LeapApp::screenShot, this ),	"key=space" );
+	mParams->addButton( "Quit",			bind( &LeapApp::quit, this ),		"key=q" );
 }
 
-// Runs update logic
 void LeapApp::update()
 {
-	// Update frame rate
 	mFrameRate = getAverageFps();
 
-	// Toggle fullscreen
 	if ( mFullScreen != isFullScreen() ) {
 		setFullScreen( mFullScreen );
 	}
 }
 
-// Run application
-CINDER_APP_BASIC( LeapApp, RendererGl )
+CINDER_APP( LeapApp, RendererGl, []( App::Settings* settings )
+{
+	settings->setWindowSize( 1024, 768 );
+	settings->setFrameRate( 60.0f );
+} )
